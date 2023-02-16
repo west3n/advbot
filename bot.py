@@ -1,10 +1,15 @@
 from aiogram import Bot, Dispatcher, types, executor
 from aiogram.dispatcher import FSMContext
 from aiogram.contrib.fsm_storage.memory import MemoryStorage
+from aiogram.types import InputFile
+
+from io import BytesIO
 
 import state as st
 import config as cfg
 import keyboard as kb
+import pdf_generator as pdf
+import os
 
 bot = Bot(cfg.bot_token, parse_mode=types.ParseMode.HTML)
 storage = MemoryStorage()
@@ -88,6 +93,7 @@ async def adv_image_call(call: types.CallbackQuery, state: FSMContext):
         await call.message.delete()
         await call.message.answer("Here it is:")
         await call.message.answer(data['text'], reply_markup=kb.finish())
+        await state.set_state(st.CreateAd.send)
 
 
 @dp.callback_query_handler(text="finish_", state=st.CreateAd)
@@ -96,6 +102,7 @@ async def adv_image_call(call: types.CallbackQuery, state: FSMContext):
         await call.message.delete()
         await call.message.answer("Here it is:")
         await call.bot.send_photo(admin_id, photo=data['image'], caption=data['text'], reply_markup=kb.finish_())
+        await state.set_state(st.CreateAd.send)
 
 
 @dp.callback_query_handler(text="send", state=st.CreateAd.send)
@@ -110,10 +117,12 @@ async def adv_image_call(call: types.CallbackQuery, state: FSMContext):
 @dp.callback_query_handler(text="send_", state=st.CreateAd.send)
 async def adv_image_call(call: types.CallbackQuery, state: FSMContext):
     async with state.proxy() as data:
+        pdf_path = pdf.create_pdf(data['text'])
         for group_id in group_ids:
-            await call.bot.send_photo(chat_id=group_id, photo=data['image'], caption=data['text'])
-            await call.message.answer(f"Message has been send to group id: {group_id}")
-            await state.finish()
+            await call.bot.send_document(chat_id=group_id, document=InputFile(pdf_path))
+            await call.message.answer(f"Message has been sent to group id: {group_id}")
+        os.remove(pdf_path)
+        await state.finish()
 
 
 @dp.callback_query_handler(text="cancel")
